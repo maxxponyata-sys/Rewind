@@ -1,0 +1,10 @@
+Package: app.rewind.ios10
+Name: Rewind
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: A lightweight YouTube client for iOS 10, powered by Invidious.
+Maintainer: maxxponyata-sys
+Author: maxxponyata-sys
+Section: Multimedia
+Depends: firmware (>= 10.0)
+Icon: file:///Applications/Rewind.app/AppIcon60x60@2x.png
