@@ -4,7 +4,7 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 
-#define RW_VERSION @"1.0.1"
+#define RW_VERSION @"1.1.0"
 #define RW_SOURCE_URL @"https://github.com/maxxponyata-sys/Rewind"
 
 extern NSString *const RWLibraryDidChangeNotification;
@@ -29,10 +29,13 @@ NSString *RWCompactNumber(long long n);
 
 #pragma mark - Networking
 
-@interface RWNetwork : NSObject <NSURLSessionDelegate>
+@interface RWNetwork : NSObject <NSURLSessionTaskDelegate>
 + (instancetype)shared;
 - (NSURLSessionDataTask *)getJSON:(NSURL *)url completion:(void (^)(id json, NSError *error))completion;
 - (void)loadImage:(NSURL *)url completion:(void (^)(UIImage *image))completion;
+// Fetches a byte range ("bytes=a-b", or nil for everything). Completion runs on a background queue.
+- (void)fetchURL:(NSURL *)url range:(NSString *)range
+      completion:(void (^)(NSData *data, NSHTTPURLResponse *response, NSError *error))completion;
 // Trusts the system roots plus the bundled ISRG roots (iOS 10 predates ISRG Root X1).
 + (void)handleChallenge:(NSURLAuthenticationChallenge *)challenge
              completion:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *credential))completion;
@@ -99,6 +102,20 @@ typedef void (^RWItemsBlock)(NSArray *items, NSString *next, NSError *error);
 + (void)toggleSubscription:(RWChannel *)channel;
 + (void)removeSubscription:(NSString *)ucid;
 @end
+
+#pragma mark - Local HLS server
+
+// Serves YouTube's separate fragmented-MP4 video/audio streams as HLS from 127.0.0.1,
+// which iOS 10's AVPlayer plays natively (picture + sound, adaptive quality).
+@interface RWStreamServer : NSObject
++ (instancetype)shared;
+// `videos` are H.264 adaptive formats, best first. Completion runs on the main queue.
+- (void)prepareVideoFormats:(NSArray<NSDictionary *> *)videos audio:(NSDictionary *)audio
+                 completion:(void (^)(NSURL *masterURL, NSError *error))completion;
+@end
+
+NSArray *RWParseSidx(NSData *data, long long indexStart);
+NSString *RWMediaPlaylist(NSString *mediaName, long long initLength, NSArray *segments);
 
 #pragma mark - Stream loader
 

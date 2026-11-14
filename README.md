@@ -23,9 +23,9 @@ Download the files from the [latest release](https://github.com/maxxponyata-sys/
 
 | Your device | File | How |
 |---|---|---|
-| Jailbroken (h3lix, doubleH3lix, Meridian…) | `Rewind-1.0.1-iphoneos-arm.deb` | Install it with Filza or `dpkg -i`, then respring if the icon doesn't show up |
-| Jailbroken with AppSync Unified | `Rewind-1.0.1.ipa` | Install it with Filza, ReProvision or AppSync |
-| Not jailbroken | `Rewind-1.0.1.ipa` | Sideload it with [Sideloadly](https://sideloadly.io) or another sideloading tool and your Apple ID (free accounts have to re-sign every 7 days) |
+| Jailbroken (h3lix, doubleH3lix, Meridian…) | `Rewind-1.1.0-iphoneos-arm.deb` | Install it with Filza or `dpkg -i`, then respring if the icon doesn't show up |
+| Jailbroken with AppSync Unified | `Rewind-1.1.0.ipa` | Install it with Filza, ReProvision or AppSync |
+| Not jailbroken | `Rewind-1.1.0.ipa` | Sideload it with [Sideloadly](https://sideloadly.io) or another sideloading tool and your Apple ID (free accounts have to re-sign every 7 days) |
 
 The IPA is only fake-signed with ldid; sideloading tools re-sign it with your own certificate.
 
@@ -42,7 +42,7 @@ The server needs to have its API enabled and to proxy video streams (`local=true
 
 ## How playback works
 
-YouTube now serves picture and sound as separate streams (the old combined 360p/720p MP4s are mostly gone). Rewind picks the best H.264 video stream at or below your quality setting plus the AAC audio stream, then plays them together with `AVMutableComposition`. Every byte goes through a custom `AVAssetResourceLoader`, so streams play even from servers with modern certificates.
+YouTube now serves picture and sound as separate fragmented MP4 files (DASH); the old combined MP4s are mostly gone. Their headers contain no samples, so AVFoundation can't stitch them together directly. Instead Rewind runs a tiny HTTP server on `127.0.0.1`: it reads each stream's `sidx` index, turns it into an HLS playlist (fMP4 segments addressed with `EXT-X-BYTERANGE`, which iOS 10 supports), and proxies the byte ranges from the Invidious server. AVPlayer then plays picture and sound natively and switches quality to suit the connection. All requests go through Rewind's own networking, so streams play even from servers with modern Let's Encrypt certificates. On 32-bit devices (iPhone 5/5c) 60 fps formats are skipped, since the A6 can't decode them.
 
 ## Building
 
@@ -60,7 +60,7 @@ To make an IPA, put `.theos/obj/Rewind.app` in a `Payload/` folder and zip it.
 
 ## Status
 
-Version 1.0.1 is the current release. It builds cleanly for armv7 and arm64, and the server API it relies on was tested from a PC. **It hasn't been tested on a real iOS 10 device yet.** Please [open an issue](https://github.com/maxxponyata-sys/Rewind/issues) with your device model and iOS version if something doesn't work.
+Version 1.1.0 is the current release. It builds cleanly for armv7 and arm64, and the server API it relies on was tested from a PC. **It hasn't been tested on a real iOS 10 device yet.** Please [open an issue](https://github.com/maxxponyata-sys/Rewind/issues) with your device model and iOS version if something doesn't work.
 
 ## Disclaimer
 

@@ -128,6 +128,27 @@ static BOOL RWTrustPasses(SecTrustRef trust) {
     return task;
 }
 
+- (void)fetchURL:(NSURL *)url range:(NSString *)range
+      completion:(void (^)(NSData *, NSHTTPURLResponse *, NSError *))completion {
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.timeoutInterval = 30;
+    request.cachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
+    if (range.length) [request setValue:range forHTTPHeaderField:@"Range"];
+    [[_session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        completion(data, [response isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)response : nil, error);
+    }] resume];
+}
+
+// Invidious answers stream URLs with a redirect to its proxy; keep the Range header across it.
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task willPerformHTTPRedirection:(NSHTTPURLResponse *)response
+        newRequest:(NSURLRequest *)request completionHandler:(void (^)(NSURLRequest *))completionHandler {
+    NSString *range = [task.originalRequest valueForHTTPHeaderField:@"Range"];
+    if (!range) { completionHandler(request); return; }
+    NSMutableURLRequest *next = [request mutableCopy];
+    [next setValue:range forHTTPHeaderField:@"Range"];
+    completionHandler(next);
+}
+
 - (void)loadImage:(NSURL *)url completion:(void (^)(UIImage *))completion {
     if (!url) { completion(nil); return; }
     UIImage *cached = [_images objectForKey:url];

@@ -51,12 +51,36 @@ static NSDictionary *RWPickAudio(NSArray *formats) {
     return pick;
 }
 
-static CMTime RWUsableDuration(AVAssetTrack *track, AVAsset *asset, NSInteger fallbackSeconds) {
-    CMTime d = track.timeRange.duration;
-    if (CMTIME_IS_NUMERIC(d) && CMTimeGetSeconds(d) > 0.5) return d;
-    d = asset.duration;
-    if (CMTIME_IS_NUMERIC(d) && CMTimeGetSeconds(d) > 0.5) return d;
-    return CMTimeMakeWithSeconds(MAX(fallbackSeconds, 1), 600);
+// H.264 adaptive streams that have a segment index, best first: one per height,
+// at or below maxHeight (or the smallest one if none fit). 32-bit devices (A6 and
+// older) can't decode high-frame-rate H.264, so those formats are skipped there.
+static NSArray *RWVideoVariants(NSArray *formats, NSInteger maxHeight) {
+    BOOL limitFPS = sizeof(void *) == 4;
+    NSMutableDictionary<NSNumber *, NSDictionary *> *byHeight = [NSMutableDictionary dictionary];
+    for (NSDictionary *f in formats) {
+        if (!RWHasURL(f) || ![f[@"init"] isKindOfClass:[NSString class]] || ![f[@"index"] isKindOfClass:[NSString class]]) continue;
+        NSString *type = [f[@"type"] description];
+        if (![type hasPrefix:@"video/mp4"] || [type rangeOfString:@"avc1"].location == NSNotFound) continue;
+        if (limitFPS && [[f[@"fps"] description] integerValue] > 30) continue;
+        NSInteger h = RWHeight(f);
+        if (h <= 0) continue;
+        NSDictionary *existing = byHeight[@(h)];
+        if (!existing || [[f[@"bitrate"] description] longLongValue] > [[existing[@"bitrate"] description] longLongValue]) byHeight[@(h)] = f;
+    }
+    NSArray *heights = [byHeight.allKeys sortedArrayUsingSelector:@selector(compare:)];
+    NSMutableArray *out = [NSMutableArray array];
+    for (NSNumber *h in heights.reverseObjectEnumerator) if (h.integerValue <= maxHeight) [out addObject:byHeight[h]];
+    if (!out.count && heights.count) [out addObject:byHeight[heights.firstObject]];
+    return out;
+}
+
+// Invidious sometimes serves cached links whose `expire` time has already passed.
+static BOOL RWLinksExpired(NSDictionary *format) {
+    NSString *url = [format[@"url"] description];
+    NSRange r = [url rangeOfString:@"expire="];
+    if (r.location == NSNotFound) return NO;
+    long long expire = [[url substringFromIndex:NSMaxRange(r)] longLongValue];
+    return expire > 0 && expire < (long long)[NSDate date].timeIntervalSince1970 + 30;
 }
 
 @implementation RWPlayerViewController {
@@ -262,73 +286,37 @@ static CMTime RWUsableDuration(AVAssetTrack *track, AVAsset *asset, NSInteger fa
         return;
     }
 
-    NSInteger maxQuality = [RWSettings maxQuality];
-    NSDictionary *combined = RWPickVideo(muxed, maxQuality);
-    NSDictionary *video = RWPickVideo(adaptive, maxQuality);
-    // A combined stream is simplest, but only use it if it's not worse than what adaptive offers.
-    if (combined && (!video || !audio || RWHeight(combined) >= RWHeight(video))) {
-        _qualityText = [NSString stringWithFormat:@"%ldp", (long)RWHeight(combined)];
-        [self playAsset:[[RWResourceLoader shared] assetWithURL:RWResolveURL(combined[@"url"])]];
+    if (RWLinksExpired(audio)) {
+        [_spinner stopAnimating];
+        [self showStatus:@"The server handed out expired video links (its cache is stale). Try again in a few minutes or switch servers in Settings."];
         return;
     }
-    if (!video || !audio) {
+
+    NSInteger maxQuality = [RWSettings maxQuality];
+    NSArray *variants = RWVideoVariants(adaptive, maxQuality);
+    NSDictionary *combined = RWPickVideo(muxed, maxQuality);
+    if (!variants.count || !audio) {
+        if (combined) { [self playCombined:combined]; return; }
         [_spinner stopAnimating];
         [self showStatus:@"This server didn't return an H.264 stream that iOS 10 can play."];
         return;
     }
-    _qualityText = [NSString stringWithFormat:@"%ldp", (long)RWHeight(video)];
-    [self playVideo:video audio:audio];
-}
-
-// YouTube serves picture and sound separately; stitch them into one composition.
-- (void)playVideo:(NSDictionary *)videoFormat audio:(NSDictionary *)audioFormat {
-    AVURLAsset *videoAsset = [[RWResourceLoader shared] assetWithURL:RWResolveURL(videoFormat[@"url"])];
-    AVURLAsset *audioAsset = [[RWResourceLoader shared] assetWithURL:RWResolveURL(audioFormat[@"url"])];
-    NSArray *keys = @[@"tracks", @"duration"];
-    dispatch_group_t group = dispatch_group_create();
-    dispatch_group_enter(group);
-    [videoAsset loadValuesAsynchronouslyForKeys:keys completionHandler:^{ dispatch_group_leave(group); }];
-    dispatch_group_enter(group);
-    [audioAsset loadValuesAsynchronouslyForKeys:keys completionHandler:^{ dispatch_group_leave(group); }];
-
+    _qualityText = [NSString stringWithFormat:@"%ldp", (long)RWHeight(variants.firstObject)];
     __weak RWPlayerViewController *weakSelf = self;
-    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+    [[RWStreamServer shared] prepareVideoFormats:variants audio:audio completion:^(NSURL *masterURL, NSError *error) {
         RWPlayerViewController *s = weakSelf;
         if (!s || s->_closed) return;
-        NSError *error = nil;
-        AVAsset *composition = [s compositionWithVideo:videoAsset audio:audioAsset error:&error];
-        if (composition) {
-            [s playAsset:composition];
-        } else {
-            s->_qualityText = @"Audio";
-            [s playAsset:audioAsset];
-            [s showStatus:[NSString stringWithFormat:@"Couldn't load the picture (%@). Playing sound only.", error.localizedDescription ?: @"unknown error"]];
-        }
-    });
+        if (masterURL) { [s playAsset:[AVURLAsset URLAssetWithURL:masterURL options:nil]]; return; }
+        if (combined) { [s playCombined:combined]; return; }
+        s->_qualityText = @"Audio";
+        [s playAsset:[[RWResourceLoader shared] assetWithURL:RWResolveURL(audio[@"url"])]];
+        [s showStatus:[NSString stringWithFormat:@"Couldn't prepare the picture (%@). Playing sound only.", error.localizedDescription ?: @"unknown error"]];
+    }];
 }
 
-- (AVAsset *)compositionWithVideo:(AVURLAsset *)videoAsset audio:(AVURLAsset *)audioAsset error:(NSError **)error {
-    NSError *loadError = nil;
-    if ([videoAsset statusOfValueForKey:@"tracks" error:&loadError] != AVKeyValueStatusLoaded ||
-        [audioAsset statusOfValueForKey:@"tracks" error:&loadError] != AVKeyValueStatusLoaded) {
-        if (error) *error = loadError;
-        return nil;
-    }
-    AVAssetTrack *videoTrack = [videoAsset tracksWithMediaType:AVMediaTypeVideo].firstObject;
-    AVAssetTrack *audioTrack = [audioAsset tracksWithMediaType:AVMediaTypeAudio].firstObject;
-    if (!videoTrack || !audioTrack) {
-        if (error) *error = [NSError errorWithDomain:@"Rewind" code:1 userInfo:@{NSLocalizedDescriptionKey: @"stream has no track"}];
-        return nil;
-    }
-    AVMutableComposition *composition = [AVMutableComposition composition];
-    AVMutableCompositionTrack *v = [composition addMutableTrackWithMediaType:AVMediaTypeVideo preferredTrackID:kCMPersistentTrackID_Invalid];
-    AVMutableCompositionTrack *a = [composition addMutableTrackWithMediaType:AVMediaTypeAudio preferredTrackID:kCMPersistentTrackID_Invalid];
-    CMTime videoDuration = RWUsableDuration(videoTrack, videoAsset, _video.lengthSeconds);
-    CMTime audioDuration = RWUsableDuration(audioTrack, audioAsset, _video.lengthSeconds);
-    if (![v insertTimeRange:CMTimeRangeMake(kCMTimeZero, videoDuration) ofTrack:videoTrack atTime:kCMTimeZero error:error]) return nil;
-    if (![a insertTimeRange:CMTimeRangeMake(kCMTimeZero, audioDuration) ofTrack:audioTrack atTime:kCMTimeZero error:error]) return nil;
-    v.preferredTransform = videoTrack.preferredTransform;
-    return composition;
+- (void)playCombined:(NSDictionary *)format {
+    _qualityText = [NSString stringWithFormat:@"%ldp", (long)RWHeight(format)];
+    [self playAsset:[[RWResourceLoader shared] assetWithURL:RWResolveURL(format[@"url"])]];
 }
 
 - (void)playAsset:(AVAsset *)asset {
