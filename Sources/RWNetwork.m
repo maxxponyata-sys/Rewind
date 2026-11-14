@@ -248,7 +248,11 @@ static NSString *const RWSchemePrefix = @"rw";
  completionHandler:(void (^)(NSURLSessionResponseDisposition))completionHandler {
     NSNumber *key = @(dataTask.taskIdentifier);
     AVAssetResourceLoadingRequest *loadingRequest = _requests[key];
-    if (!loadingRequest) { completionHandler(NSURLSessionResponseCancel); return; }
+    if (!loadingRequest || loadingRequest.isCancelled || loadingRequest.isFinished) {
+        [self forgetTask:dataTask];
+        completionHandler(NSURLSessionResponseCancel);
+        return;
+    }
 
     NSHTTPURLResponse *http = [response isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)response : nil;
     NSInteger code = http ? http.statusCode : 200;
@@ -282,7 +286,7 @@ static NSString *const RWSchemePrefix = @"rw";
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask didReceiveData:(NSData *)data {
     NSNumber *key = @(dataTask.taskIdentifier);
     AVAssetResourceLoadingRequest *loadingRequest = _requests[key];
-    if (!loadingRequest) return;
+    if (!loadingRequest || loadingRequest.isCancelled || loadingRequest.isFinished) return;
     long long skip = [_skip[key] longLongValue];
     if (skip > 0) {
         if ((long long)data.length <= skip) { _skip[key] = @(skip - (long long)data.length); return; }
@@ -294,10 +298,10 @@ static NSString *const RWSchemePrefix = @"rw";
 
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
     AVAssetResourceLoadingRequest *loadingRequest = _requests[@(task.taskIdentifier)];
-    if (!loadingRequest) return;
+    [self forgetTask:task];
+    if (!loadingRequest || loadingRequest.isCancelled || loadingRequest.isFinished) return;
     if (error) [loadingRequest finishLoadingWithError:error];
     else [loadingRequest finishLoading];
-    [self forgetTask:task];
 }
 
 - (void)URLSession:(NSURLSession *)session didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge

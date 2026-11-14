@@ -23,9 +23,9 @@ Download the files from the [latest release](https://github.com/maxxponyata-sys/
 
 | Your device | File | How |
 |---|---|---|
-| Jailbroken (h3lix, doubleH3lix, Meridian…) | `Rewind-1.0.0-iphoneos-arm.deb` | Install it with Filza or `dpkg -i`, then respring if the icon doesn't show up |
-| Jailbroken with AppSync Unified | `Rewind-1.0.0.ipa` | Install it with Filza, ReProvision or AppSync |
-| Not jailbroken | `Rewind-1.0.0.ipa` | Sideload it with [Sideloadly](https://sideloadly.io) or another sideloading tool and your Apple ID (free accounts have to re-sign every 7 days) |
+| Jailbroken (h3lix, doubleH3lix, Meridian…) | `Rewind-1.0.1-iphoneos-arm.deb` | Install it with Filza or `dpkg -i`, then respring if the icon doesn't show up |
+| Jailbroken with AppSync Unified | `Rewind-1.0.1.ipa` | Install it with Filza, ReProvision or AppSync |
+| Not jailbroken | `Rewind-1.0.1.ipa` | Sideload it with [Sideloadly](https://sideloadly.io) or another sideloading tool and your Apple ID (free accounts have to re-sign every 7 days) |
 
 The IPA is only fake-signed with ldid; sideloading tools re-sign it with your own certificate.
 
@@ -60,7 +60,7 @@ To make an IPA, put `.theos/obj/Rewind.app` in a `Payload/` folder and zip it.
 
 ## Status
 
-Version 1.0.0 is the first release. It builds cleanly for armv7 and arm64, and the server API it relies on was tested from a PC. **It hasn't been tested on a real iOS 10 device yet.** Please [open an issue](https://github.com/maxxponyata-sys/Rewind/issues) with your device model and iOS version if something doesn't work.
+Version 1.0.1 is the current release. It builds cleanly for armv7 and arm64, and the server API it relies on was tested from a PC. **It hasn't been tested on a real iOS 10 device yet.** Please [open an issue](https://github.com/maxxponyata-sys/Rewind/issues) with your device model and iOS version if something doesn't work.
 
 ## Disclaimer
 

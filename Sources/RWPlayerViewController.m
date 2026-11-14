@@ -344,7 +344,7 @@ static CMTime RWUsableDuration(AVAssetTrack *track, AVAsset *asset, NSInteger fa
     [_player play];
     [self setupRemoteCommands];
     [self updateNowPlaying];
-    [_table reloadSections:[NSIndexSet indexSetWithIndex:0] withRowAnimation:UITableViewRowAnimationNone];
+    [_table reloadData];
 }
 
 - (void)stopObservingItem {
@@ -395,7 +395,7 @@ static CMTime RWUsableDuration(AVAssetTrack *track, AVAsset *asset, NSInteger fa
 
 - (void)appDidEnterBackground { _pvc.player = nil; }   // detaching the layer keeps playback going
 - (void)appWillEnterForeground { if (!_closed) _pvc.player = _player; }
-- (void)libraryChanged { if (!_closed) [_table reloadSections:[NSIndexSet indexSetWithIndex:0] withRowAnimation:UITableViewRowAnimationNone]; }
+- (void)libraryChanged { if (!_closed && self.isViewLoaded) [_table reloadData]; }
 
 - (void)addRemote:(MPRemoteCommand *)command handler:(MPRemoteCommandHandlerStatus (^)(MPRemoteCommandEvent *e))handler {
     command.enabled = YES;
@@ -605,7 +605,7 @@ typedef NS_ENUM(NSInteger, RWSection) { RWSectionInfo, RWSectionDescription, RWS
         [self.navigationController pushViewController:next animated:YES];
     } else if (indexPath.section == RWSectionDescription) {
         _descriptionExpanded = !_descriptionExpanded;
-        [tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+        [tableView reloadData];
     } else if (indexPath.section == RWSectionInfo && indexPath.row == 2 && _channel) {
         [self.navigationController pushViewController:[[RWChannelViewController alloc] initWithChannel:_channel] animated:YES];
     }

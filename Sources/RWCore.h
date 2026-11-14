@@ -4,7 +4,7 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 
-#define RW_VERSION @"1.0.0"
+#define RW_VERSION @"1.0.1"
 #define RW_SOURCE_URL @"https://github.com/maxxponyata-sys/Rewind"
 
 extern NSString *const RWLibraryDidChangeNotification;
